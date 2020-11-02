@@ -1,7 +1,8 @@
-import { Column, Entity, PrimaryGeneratedColumn, Index, OneToMany, OneToOne } from 'typeorm'
+import { Column, Entity, PrimaryGeneratedColumn, Index, OneToMany, OneToOne, ManyToOne } from 'typeorm'
 
 import TxEntity from './TxEntity'
 import BlockRewardEntity from './BlockRewardEntity'
+import { ValidatorInfoEntity } from 'orm'
 
 @Entity('block')
 @Index('index_with_chainid_and_height', ['chainId', 'height'], { unique: true })
@@ -18,7 +19,7 @@ export default class BlockEntity {
   height: number
 
   @Index('block_timestamp')
-  @Column({ nullable: true })
+  @Column()
   timestamp: Date
 
   @OneToMany(() => TxEntity, (txs) => txs.block, {
@@ -28,4 +29,7 @@ export default class BlockEntity {
 
   @OneToOne(() => BlockRewardEntity, (reward) => reward.block, { cascade: true, eager: true })
   reward: BlockRewardEntity
+
+  @ManyToOne(() => ValidatorInfoEntity, { eager: true })
+  validator: ValidatorInfoEntity
 }

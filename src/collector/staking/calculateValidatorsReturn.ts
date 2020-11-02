@@ -3,7 +3,7 @@ import { getRepository } from 'typeorm'
 
 import { ValidatorReturnInfoEntity, BlockEntity } from 'orm'
 
-import { getValidators } from 'lib/lcd'
+import { getValidatorSets, getValidators } from 'lib/lcd'
 import { collectorLogger as logger } from 'lib/logger'
 import { ONE_DAY_IN_MS } from 'lib/constant'
 
@@ -37,10 +37,10 @@ export async function calculateValidatorsReturn() {
     return
   }
 
-  const validatorsList = await getValidators()
-  logger.info(`Got a list of ${validatorsList.length} validators`)
+  const validators = await getValidators()
+  logger.info(`Got a list of ${validators.length} validators`)
 
-  if (!validatorsList) {
+  if (!validators) {
     return
   }
 
@@ -48,18 +48,21 @@ export async function calculateValidatorsReturn() {
   // used -10 for just to make sure it doesn't calculate for today
   toTs -= 10
 
-  const valRetInfoEntityList: ValidatorReturnInfoEntity[] = []
+  const allReturns: ValidatorReturnInfoEntity[] = []
+  const validatorSets = await getValidatorSets()
 
   for (let tsIt = fromTs; tsIt < toTs && tsIt < latestBlockTs; tsIt = tsIt + ONE_DAY_IN_MS) {
-    const dailyEntityList = await getValidatorsReturnOfTheDay(tsIt, validatorsList)
+    const dailyReturns = await getValidatorsReturnOfTheDay(tsIt, validatorSets, validators)
 
-    valRetInfoEntityList.push(...dailyEntityList)
+    allReturns.push(...dailyReturns)
 
     logger.info(`Calculated and got return for day of ${startOfDay(tsIt)}`)
   }
-  if (valRetInfoEntityList.length) {
-    await getRepository(ValidatorReturnInfoEntity).save(valRetInfoEntityList)
-    logger.info(`Stored daily ${valRetInfoEntityList.length} daily return`)
+
+  if (allReturns.length) {
+    await getRepository(ValidatorReturnInfoEntity).save(allReturns)
+    logger.info(`Stored daily ${allReturns.length} daily return`)
   }
+
   logger.info('Validator return calculator completed.')
 }

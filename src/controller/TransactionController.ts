@@ -7,12 +7,24 @@ import { ErrorCodes } from 'lib/error'
 import { TERRA_ACCOUNT_REGEX, CHAIN_ID_REGEX } from 'lib/constant'
 import { getUnconfirmedTxs } from 'lib/rpc'
 
-import { getTx, getTxList, getMsgList, postTxs } from 'service/transaction'
+import { getBlock, getTx, getTxList, getMsgList, postTxs } from 'service/transaction'
 
 const Joi = Validator.Joi
 
 @Controller('')
 export default class TransactionController extends KoaController {
+  @Get('/block/:height')
+  @Validate({
+    params: {
+      height: Joi.number().required().description('Block Height')
+    },
+    failure: ErrorCodes.INVALID_REQUEST_ERROR
+  })
+  async getBlock(ctx): Promise<void> {
+    const { height } = ctx.params
+    success(ctx, await getBlock(height))
+  }
+
   /**
    * @api {get} /tx/:txhash Get Tx
    * @apiName getTx

@@ -83,12 +83,12 @@ interface LcdValidatorCommission {
   update_time: string
 }
 
-interface LcdLatestValidatorSet {
+interface LcdValidatorSetAtHeight {
   block_height: string
-  validators: LcdLatestValidator[]
+  validators: LcdValidatorSet[]
 }
 
-interface LcdLatestValidator {
+interface LcdValidatorSet {
   address: string
   proposer_priority: string
   pub_key: string

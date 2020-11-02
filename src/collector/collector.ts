@@ -5,18 +5,17 @@ import { default as parseDuration } from 'parse-duration'
 
 import { collectorLogger as logger } from 'lib/logger'
 import { initializeSentry } from 'lib/errorReporting'
+import Semaphore from './Semaphore'
 
+import { collectValidator, calculateValidatorsReturn } from './staking'
 import { collectBlock } from './block'
 import { collectPrice } from './price'
 import { collectorGeneral } from './general'
-import { collectValidator, calculateValidatorsReturn } from './staking'
 import { collectProposal } from './gov'
 import { collectDashboard } from './dashboard'
 import { rpcEventWatcher } from './watcher'
 import { collectRichList } from './richlist'
 import { collectUnvested } from './unvested'
-
-import Semaphore from './Semaphore'
 
 process.on('unhandledRejection', (err) => {
   logger.error({
@@ -26,25 +25,19 @@ process.on('unhandledRejection', (err) => {
   })
 })
 
-const tenMinute = parseDuration('10m')
-const twentyMinute = parseDuration('20m')
+const TEN_MINUTES = parseDuration('10m')
 
-const blockCollector = new Semaphore('BlockCollector', collectBlock, logger, tenMinute) // 10 min timeout time as block collector has a loop
-const priceCollector = new Semaphore('PriceCollector', collectPrice, logger) // default 1 min timeout
-const generalCollector = new Semaphore('GeneralCollector', collectorGeneral, logger) // default 1 min timeout
-const validatorCollector = new Semaphore('ValidatorCollector', collectValidator, logger) // default 1 min timeout
-const returnCalculator = new Semaphore('ReturnCalculator', calculateValidatorsReturn, logger, tenMinute) // 10 min timeout
-const proposalCollector = new Semaphore('ProposalCollector', collectProposal, logger) // 1 min timeout
-const dashboardCollector = new Semaphore('DashboardCollector', collectDashboard, logger, twentyMinute) // 20 mins as took 3 mins go get users count
-const richListCollector = new Semaphore('RichListCollector', collectRichList, logger, tenMinute) // run once a day and huge data
-const vestingCollector = new Semaphore('VestingCollector', collectUnvested, logger, tenMinute) // run once a day
+export const blockCollector = new Semaphore('BlockCollector', collectBlock, logger)
+export const validatorCollector = new Semaphore('ValidatorCollector', collectValidator, logger)
+export const priceCollector = new Semaphore('PriceCollector', collectPrice, logger)
+export const generalCollector = new Semaphore('GeneralCollector', collectorGeneral, logger)
+export const proposalCollector = new Semaphore('ProposalCollector', collectProposal, logger)
+export const returnCalculator = new Semaphore('ReturnCalculator', calculateValidatorsReturn, logger, TEN_MINUTES) // 10 min timeout
+export const dashboardCollector = new Semaphore('DashboardCollector', collectDashboard, logger, TEN_MINUTES) // 20 mins as took 3 mins go get users count
+export const richListCollector = new Semaphore('RichListCollector', collectRichList, logger, TEN_MINUTES) // run once a day and huge data
+export const vestingCollector = new Semaphore('VestingCollector', collectUnvested, logger, TEN_MINUTES) // run once a day
 
 const jobs = [
-  // Per second
-  {
-    method: blockCollector.run.bind(blockCollector),
-    cron: '* * * * * *'
-  },
   // Per minute
   {
     method: generalCollector.run.bind(generalCollector),

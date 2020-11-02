@@ -22,13 +22,17 @@ export default class ValidatorInfoEntity {
   @Column()
   operatorAddress: string
 
+  @Index('vi_account_address')
+  @Column()
+  accountAddress: string
+
   @Index('vi_cons_pub_key')
   @Column()
   consensusPubkey: string
 
-  @Index('vi_account_address')
-  @Column()
-  accountAddress: string
+  @Index('vi_cons_address')
+  @Column({ nullable: true })
+  consensusAddress: string
 
   @Column()
   moniker: string

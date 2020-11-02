@@ -5,6 +5,7 @@ import * as lcd from 'lib/lcd'
 import { plus, times, minus } from 'lib/math'
 import { convertValAddressToAccAddress } from 'lib/common'
 import { errorReport } from 'lib/errorReporting'
+import { calculateVotingPowers } from 'service/staking'
 
 type ValidatorVotingPower = {
   accountAddress: string
@@ -80,7 +81,8 @@ export function getVoteCounts(votes: LcdProposalVote[]): VoteCount {
 }
 
 export async function getValidatorsVotingPower(): Promise<ValidatorVotingPower[]> {
-  const [votingPower, validators] = await Promise.all([lcd.getVotingPower(), lcd.getValidators()])
+  const [validatorSets, validators] = await Promise.all([lcd.getValidatorSets(), lcd.getValidators()])
+  const { votingPowerByPubKey } = calculateVotingPowers(validatorSets)
 
   return validators.map((item) => {
     const accAddr = convertValAddressToAccAddress(item.operator_address)
@@ -88,7 +90,7 @@ export async function getValidatorsVotingPower(): Promise<ValidatorVotingPower[]
     return {
       accountAddress: accAddr,
       operatorAddress: item.operator_address,
-      votingPower: times(votingPower.votingPowerByPubKey[item.consensus_pubkey], '1000000')
+      votingPower: times(votingPowerByPubKey[item.consensus_pubkey], '1000000')
     }
   })
 }

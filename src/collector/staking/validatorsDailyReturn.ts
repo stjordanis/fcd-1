@@ -31,7 +31,8 @@ async function getExistingValidatorsMap(
 
 export async function getValidatorsReturnOfTheDay(
   fromTs: number,
-  validatorsList: LcdValidator[]
+  validatorSets: LcdValidatorSet[],
+  validatorList: LcdValidator[]
 ): Promise<ValidatorReturnInfoEntity[]> {
   const retEntity: ValidatorReturnInfoEntity[] = []
 
@@ -44,7 +45,7 @@ export async function getValidatorsReturnOfTheDay(
 
   const valMap = await getExistingValidatorsMap(timestamp)
 
-  for (const validator of validatorsList) {
+  for (const validator of validatorList) {
     logger.info(`${validator.operator_address}: calculating return`)
 
     if (valMap[validator.operator_address]) {
@@ -52,7 +53,14 @@ export async function getValidatorsReturnOfTheDay(
       continue
     }
 
-    const validatorAvgVotingPower = await getAvgVotingPower(validator.operator_address, fromTs, fromTs + ONE_DAY_IN_MS)
+    const validatorSet = validatorSets.find((v) => v.pub_key === validator.consensus_pubkey)
+
+    if (!validatorSet) {
+      logger.error(`${validator.consensus_pubkey}: not found in validator sets`)
+      continue
+    }
+
+    const validatorAvgVotingPower = await getAvgVotingPower(validator, validatorSet, fromTs, fromTs + ONE_DAY_IN_MS)
 
     if (validatorAvgVotingPower) {
       const { reward, commission } = normalizeRewardAndCommissionToLuna(

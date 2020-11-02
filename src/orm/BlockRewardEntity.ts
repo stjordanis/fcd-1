@@ -19,16 +19,16 @@ export default class BlockRewardEntity {
   chainId: string
 
   @Column({ type: 'jsonb' })
-  reward: object
+  reward: CoinByDenoms
 
   @Column({ type: 'jsonb' })
-  commission: object
+  commission: CoinByDenoms
 
   @Column({ type: 'jsonb' })
-  rewardPerVal: object
+  rewardPerVal: { [operatorAddress: string]: CoinByDenoms }
 
   @Column({ type: 'jsonb' })
-  commissionPerVal: object
+  commissionPerVal: { [operatorAddress: string]: CoinByDenoms }
 
   @Index('block_reward_block')
   @OneToOne(() => BlockEntity, (block) => block.reward, { onDelete: 'CASCADE' })

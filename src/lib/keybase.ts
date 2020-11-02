@@ -30,4 +30,4 @@ async function getAvatar(keybaseId: string): Promise<string | undefined> {
   return getAvatarFromIdentity(identity)
 }
 
-export default memoizeCache(getAvatar, { promise: true, maxAge: 3600000 /* 6 minutes */ })
+export default memoizeCache(getAvatar, { promise: true, maxAge: 3600000 /* 1 hour */ })

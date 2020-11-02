@@ -92,31 +92,8 @@ describe('LCD', () => {
 
   test('broadcast', async () => {})
 
-  test('getLatestValidatorSet', async () => {
-    await expect(lcd.getLatestValidatorSet()).resolves.toMatchObject({
-      block_height: expect.any(String),
-      validators: expect.any(Array)
-    })
-  })
-
-  test('getVotingPower', async () => {
-    await expect(lcd.getVotingPower()).resolves.toMatchObject({
-      totalVotingPower: expect.any(String),
-      votingPowerByPubKey: {}
-    })
-  })
-
-  test('getValidatorVotingPower: invalid / not found', async () => {
-    await expect(lcd.getValidatorVotingPower('invalid or not found')).resolves.toBeUndefined()
-  })
-
-  test('getValidatorVotingPower: success', async () => {
-    await expect(lcd.getValidatorVotingPower(VALID_VALCONSPUB_ADDRESS)).resolves.toMatchObject({
-      address: expect.any(String),
-      pub_key: expect.any(String),
-      proposer_priority: expect.any(String),
-      voting_power: expect.any(String)
-    })
+  test('getValidatorSets', async () => {
+    await expect(lcd.getValidatorSets()).resolves.toBeArray()
   })
 
   test('getBlock: invalid', async () => {

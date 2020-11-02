@@ -1,10 +1,11 @@
 import * as sentry from '@sentry/node'
+import * as bech32 from 'bech32'
 import { get } from 'lodash'
 import { getTime, getMinutes } from 'date-fns'
 import { getRepository, getManager, DeepPartial, EntityManager } from 'typeorm'
 
 import config from 'config'
-import { BlockEntity, BlockRewardEntity } from 'orm'
+import { BlockEntity, BlockRewardEntity, ValidatorInfoEntity } from 'orm'
 import { splitDenomAndAmount } from 'lib/common'
 import { plus } from 'lib/math'
 import { collectorLogger as logger } from 'lib/logger'
@@ -46,19 +47,22 @@ async function getRecentlySyncedBlock(): Promise<BlockEntity | undefined> {
 }
 
 function getBlockEntity(
-  blockHeight: number,
-  block: LcdBlock,
-  blockReward: BlockRewardEntity
+  lcdBlock: LcdBlock,
+  reward: BlockRewardEntity,
+  validator: ValidatorInfo
 ): DeepPartial<BlockEntity> {
-  const chainId = get(block, 'block.header.chain_id')
-  const timestamp = get(block, 'block.header.time')
+  const chainId = lcdBlock.block.header.chain_id
+  const timestamp = lcdBlock.block.header.time
+  const height = +lcdBlock.block.header.height
 
   const blockEntity: DeepPartial<BlockEntity> = {
     chainId,
-    height: blockHeight,
+    height,
     timestamp,
-    reward: blockReward
+    reward,
+    validator
   }
+
   return blockEntity
 }
 
@@ -158,35 +162,42 @@ async function saveBlockInformation(
   logger.info(`collectBlock: begin transaction for block ${height}`)
 
   const result: BlockEntity | undefined = await getManager()
-    .transaction(async (transactionalEntityManager: EntityManager) => {
+    .transaction(async (mgr: EntityManager) => {
       // Save block rewards
-      const newBlockReward = await transactionalEntityManager
-        .getRepository(BlockRewardEntity)
-        .save(await getBlockReward(lcdBlock))
-      // new block height
-      const newBlockHeight = Number(get(lcdBlock, 'block.header.height'))
-      // Save block entity
-      const newBlockEntity = await transactionalEntityManager
+      const newBlockReward = await mgr.getRepository(BlockRewardEntity).save(await getBlockReward(lcdBlock))
+
+      // Find validator by proposer address
+      const consensusAddress = bech32.encode(
+        'terravalcons',
+        bech32.toWords(Buffer.from(lcdBlock.block.header.proposer_address, 'hex'))
+      )
+      const validatorInfo = await mgr.getRepository(ValidatorInfoEntity).findOneOrFail({
+        consensusAddress
+      })
+
+      // save block entity
+      const newBlockEntity = await mgr
         .getRepository(BlockEntity)
-        .save(getBlockEntity(newBlockHeight, lcdBlock, newBlockReward))
+        .save(getBlockEntity(lcdBlock, newBlockReward, validatorInfo))
+
       // get block tx hashes
       const txHashes = getTxHashesFromBlock(lcdBlock)
 
       if (txHashes) {
         const txEntities = await generateTxEntities(txHashes, height, newBlockEntity)
         // save transactions
-        await saveTxs(transactionalEntityManager, newBlockEntity, txEntities)
+        await saveTxs(mgr, newBlockEntity, txEntities)
         // save wasm
-        await saveWasmCodeAndContract(transactionalEntityManager, txEntities)
+        await saveWasmCodeAndContract(mgr, txEntities)
       }
 
       // new block timestamp
       const newBlockTimeStamp = isNewMinuteBlock(lastSyncedBlock, newBlockEntity)
 
       if (newBlockTimeStamp) {
-        await setReward(transactionalEntityManager, newBlockTimeStamp)
-        await setSwap(transactionalEntityManager, newBlockTimeStamp)
-        await setNetwork(transactionalEntityManager, newBlockTimeStamp)
+        await setReward(mgr, newBlockTimeStamp)
+        await setSwap(mgr, newBlockTimeStamp)
+        await setNetwork(mgr, newBlockTimeStamp)
       }
       return newBlockEntity
     })

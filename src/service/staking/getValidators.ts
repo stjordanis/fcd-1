@@ -36,13 +36,13 @@ GROUP BY operator_address;`
 }
 
 export default async function getValidators(): Promise<ValidatorResponse[]> {
-  const validatorsList = await getRepository(ValidatorInfoEntity).find({ chainId: config.CHAIN_ID })
-  const validatorsReturns = await getValidatorsReturn()
-  const validators = validatorsList.map((validator) => {
+  const validatorInfos = await getRepository(ValidatorInfoEntity).find({ chainId: config.CHAIN_ID })
+  const validatorReturns = await getValidatorsReturn()
+  const validators = validatorInfos.map((validator) => {
     const { operatorAddress } = validator
     return generateValidatorResponse(
       validator,
-      validatorsReturns[operatorAddress] || { stakingReturn: '0', isNewValidator: true }
+      validatorReturns[operatorAddress] || { stakingReturn: '0', isNewValidator: true }
     )
   })
 

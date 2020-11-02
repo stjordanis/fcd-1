@@ -10,7 +10,7 @@ import { div, plus, times } from 'lib/math'
 import { APIError, ErrorTypes } from 'lib/error'
 import { SLASHING_PERIOD } from 'lib/constant'
 import getAvatar from 'lib/keybase'
-import { collectorLogger as logger } from 'lib/logger'
+import { VotingPower } from 'service/staking'
 
 const TOKEN_MICRO_UNIT_MULTIPLICAND = '1000000'
 
@@ -37,9 +37,7 @@ async function getDelegators(operatorAddress: string): Promise<Delegator[]> {
     return []
   }
 
-  const delegateTotal = lcdDelegators.reduce((acc, curr) => {
-    return plus(acc, curr.shares)
-  }, '0')
+  const delegateTotal = lcdDelegators.reduce((acc, curr) => plus(acc, curr.shares), '0')
 
   const delegators: Delegator[] = lcdDelegators.map((delegator) => {
     return {
@@ -80,32 +78,32 @@ function getValidatorStatus(validatorInfo: LcdValidator): ValidatorStatus {
   }
 }
 
-type SaveValidatorParams = {
-  lcdValidator: LcdValidator
-  activePrices: CoinByDenoms
-  votingPower: lcd.LcdVotingPower
-}
-
-export async function saveValidatorDetail({ lcdValidator, activePrices, votingPower }: SaveValidatorParams) {
+export async function saveValidatorDetail(
+  lcdValidator: LcdValidator,
+  validatorSets: LcdValidatorSet[],
+  activePrices: CoinByDenoms,
+  votingPowers: VotingPower
+) {
   if (!lcdValidator) {
     throw new APIError(ErrorTypes.VALIDATOR_DOES_NOT_EXISTS)
   }
 
   const { operator_address: operatorAddress, consensus_pubkey: consensusPubkey } = lcdValidator
-  const accountAddr = convertValAddressToAccAddress(operatorAddress)
-  const { totalVotingPower, votingPowerByPubKey } = votingPower
-
-  const delegators = await getDelegators(operatorAddress).catch(() => [])
-  const selfDelegation = getSelfDelegation(delegators, accountAddr)
-
+  const accountAddress = convertValAddressToAccAddress(operatorAddress)
+  const consensusAddress = validatorSets.find((v) => v.pub_key === consensusPubkey)?.address
+  const totalVotingPower = votingPowers.totalVotingPower
+  const votingPower = votingPowers.votingPowerByPubKey[consensusPubkey]
   const keyBaseId = lcdValidator.description?.identity
-  const profileIcon = keyBaseId && (await getAvatar(keyBaseId))
 
-  const missedVote = await lcd.getMissedOracleVotes(operatorAddress)
+  const [delegators, missedVote, signingInfo, lcdRewardPool, profileIcon] = await Promise.all([
+    getDelegators(operatorAddress).catch(() => [] as Delegator[]),
+    lcd.getMissedOracleVotes(operatorAddress),
+    lcd.getSigningInfo(consensusPubkey).catch(() => ({} as LcdValidatorSigningInfo)),
+    lcd.getValidatorRewards(operatorAddress).catch(() => [] as LcdRewardPoolItem[]),
+    keyBaseId && getAvatar(keyBaseId)
+  ])
 
-  const signingInfo = await lcd.getSigningInfo(consensusPubkey).catch(() => ({} as LcdValidatorSigningInfo))
-
-  const lcdRewardPool = await lcd.getValidatorRewards(operatorAddress).catch(() => [] as LcdRewardPoolItem[])
+  const selfDelegation = getSelfDelegation(delegators, accountAddress)
 
   const upTime = getUptime(signingInfo)
   let rewardPoolTotal = '0'
@@ -122,8 +120,9 @@ export async function saveValidatorDetail({ lcdValidator, activePrices, votingPo
   const validatorDetails: DeepPartial<ValidatorInfoEntity> = {
     chainId: config.CHAIN_ID,
     operatorAddress,
+    consensusAddress,
     consensusPubkey,
-    accountAddress: accountAddr,
+    accountAddress,
     details,
     identity,
     moniker,
@@ -137,8 +136,8 @@ export async function saveValidatorDetail({ lcdValidator, activePrices, votingPo
     jailed: lcdValidator.jailed,
     missedOracleVote: +missedVote,
     upTime,
-    votingPower: times(votingPowerByPubKey[consensusPubkey], TOKEN_MICRO_UNIT_MULTIPLICAND),
-    votingPowerWeight: div(votingPowerByPubKey[consensusPubkey], totalVotingPower),
+    votingPower: times(votingPower, TOKEN_MICRO_UNIT_MULTIPLICAND),
+    votingPowerWeight: div(votingPower, totalVotingPower),
     commissionRate: lcdValidator.commission.commission_rates.rate,
     maxCommissionRate: lcdValidator.commission.commission_rates.max_rate,
     maxCommissionChangeRate: lcdValidator.commission.commission_rates.max_change_rate,
@@ -149,14 +148,13 @@ export async function saveValidatorDetail({ lcdValidator, activePrices, votingPo
     signingInfo,
     rewardPool: sortDenoms(rewardPool)
   }
+
   const repo = getRepository(ValidatorInfoEntity)
   const validator = await repo.findOne({ operatorAddress, chainId: config.CHAIN_ID })
 
   if (!validator) {
-    logger.info(`New validator found (operator address: ${operatorAddress}`)
     await repo.save(repo.create(validatorDetails))
   } else {
-    logger.info(`Update existing validator (op addr: ${operatorAddress}`)
     await repo.update(validator.id, validatorDetails)
   }
 }

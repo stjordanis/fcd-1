@@ -56,102 +56,6 @@ interface GetRawDelegationTxsParam {
   limit: number
 }
 
-export function getUptime(signingInfo: LcdValidatorSigningInfo): number {
-  const missedBlocksCounter = get(signingInfo, 'missed_blocks_counter')
-  return 1 - Number(missedBlocksCounter) / SLASHING_PERIOD || 0
-}
-
-export function getValidatorStatus(validatorInfo: LcdValidator): ValidatorStatusType {
-  const { status, jailed } = validatorInfo
-
-  if (jailed) {
-    return ValidatorStatusType.JAILED
-  }
-
-  switch (status) {
-    case 0: {
-      return ValidatorStatusType.INACTIVE
-    }
-
-    case 1: {
-      return ValidatorStatusType.UNBONDING
-    }
-
-    case 2: {
-      return ValidatorStatusType.ACTIVE
-    }
-
-    default: {
-      return ValidatorStatusType.UNKNOWN
-    }
-  }
-}
-
-function commissionMapper(item: LcdValidatorCommission): ValidatorCommission {
-  return {
-    rate: item.commission_rates.rate,
-    maxRate: item.commission_rates.max_rate,
-    maxChangeRate: item.commission_rates.max_change_rate,
-    updateTime: item.update_time
-  }
-}
-
-export async function getValidator(param: GetValidatorParam): Promise<GetValidatorReturn | undefined> {
-  const { validatorInfo, totalVotingPower, votingPowerObj, priceObj } = param
-  const { consensus_pubkey, operator_address, delegator_shares, tokens } = validatorInfo
-  const keyBaseId = get(validatorInfo, 'description.identity')
-  const profileIcon = keyBaseId && (await getAvatar(keyBaseId))
-  const description = {
-    ...validatorInfo.description,
-    profileIcon
-  }
-
-  const { stakingReturn, isNewValidator } = await getValidatorAnnualAvgReturn(operator_address)
-
-  const signingInfo = await lcd.getSigningInfo(consensus_pubkey)
-
-  if (!signingInfo) {
-    return
-  }
-
-  const lcdRewardPool = await lcd.getValidatorRewards(operator_address)
-
-  if (!Array.isArray(lcdRewardPool)) {
-    return
-  }
-
-  const upTime = getUptime(signingInfo)
-
-  let rewardPoolTotal = '0'
-  const rewardPool = lcdRewardPool.map(({ denom, amount }: LcdRewardPoolItem) => {
-    const adjustedAmount = denom === 'uluna' ? amount : priceObj[denom] ? div(amount, priceObj[denom]) : 0
-    rewardPoolTotal = plus(rewardPoolTotal, adjustedAmount)
-    return { denom, amount, adjustedAmount }
-  })
-  const validatorStatus = getValidatorStatus(validatorInfo)
-
-  return {
-    operatorAddress: operator_address,
-    consensusPubkey: consensus_pubkey,
-    description,
-    tokens,
-    delegatorShares: delegator_shares,
-    votingPower: {
-      amount: times(votingPowerObj[consensus_pubkey], '1000000'),
-      weight: div(votingPowerObj[consensus_pubkey], totalVotingPower)
-    },
-    commissionInfo: commissionMapper(validatorInfo.commission),
-    upTime,
-    status: validatorStatus,
-    rewardsPool: {
-      total: rewardPoolTotal,
-      denoms: sortDenoms(rewardPool)
-    },
-    stakingReturn,
-    isNewValidator
-  }
-}
-
 export async function getDelegators(opertorAddress: string): Promise<Delegator[]> {
   const lcdDelegators = await lcd.getValidatorDelegations(opertorAddress)
 
@@ -325,30 +229,18 @@ export function getUndelegateSchedule(
   )
 }
 
-export async function getAvgVotingPowerUncached(
-  operatorAddr: string,
+export async function getAvgVotingPower(
+  validator: LcdValidator,
+  validatorSet: LcdValidatorSet,
   fromTs: number,
   toTs: number
 ): Promise<string | undefined> {
-  const validator = await lcd.getValidator(operatorAddr)
-
-  if (!validator) {
-    throw new APIError(ErrorTypes.VALIDATOR_DOES_NOT_EXISTS)
-  }
-
-  const votingPowerInfo = await lcd.getValidatorVotingPower(validator.consensus_pubkey)
-
-  if (!votingPowerInfo) {
-    return
-  }
-
-  const { voting_power: votingPowerNow } = votingPowerInfo
-
+  const { voting_power: votingPowerNow } = validatorSet
   const fromStr = getQueryDateTime(fromTs)
   const toStr = getQueryDateTime(toTs)
 
   const { events: delegationBetweenRange } = await getDelegationTxs({
-    operatorAddr,
+    operatorAddr: validator.operator_address,
     from: fromStr,
     to: toStr,
     page: 1,
@@ -356,7 +248,7 @@ export async function getAvgVotingPowerUncached(
   })
 
   const { events: delegationEventsAfterToday } = await getDelegationTxs({
-    operatorAddr,
+    operatorAddr: validator.operator_address,
     from: toStr,
     page: 1,
     limit: 1000
@@ -414,8 +306,6 @@ export async function getAvgVotingPowerUncached(
 
   return getWeightedVotingPower(votingPowerNow)
 }
-
-export const getAvgVotingPower = memoizeCache(getAvgVotingPowerUncached, { promise: true, maxAge: 60 * 60 * 1000 })
 
 export async function getAvgPrice(fromTs: number, toTs: number): Promise<DenomMap> {
   const fromStr = getQueryDateTime(startOfDay(fromTs))
@@ -548,4 +438,24 @@ export function generateValidatorResponse(
     stakingReturn,
     isNewValidator
   }
+}
+
+type VotingPowerByPubKey = {
+  [pubKey: string]: string
+}
+
+export interface VotingPower {
+  totalVotingPower: string
+  votingPowerByPubKey: VotingPowerByPubKey
+}
+
+export function calculateVotingPowers(validatorSets: LcdValidatorSet[]): VotingPower {
+  let totalVotingPower = '0'
+
+  const votingPowerByPubKey = validatorSets.reduce((acc, { pub_key, voting_power }) => {
+    totalVotingPower = plus(totalVotingPower, voting_power)
+    return { ...acc, [pub_key]: voting_power }
+  }, {} as VotingPowerByPubKey)
+
+  return { totalVotingPower, votingPowerByPubKey }
 }

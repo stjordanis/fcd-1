@@ -75,40 +75,9 @@ export function broadcast(body: { tx: Transaction.Value; mode: string }): Promis
 ///////////////////////////////////////////////
 // Tendermint RPC
 ///////////////////////////////////////////////
-export function getLatestValidatorSet(): Promise<LcdLatestValidatorSet> {
-  return get(`/validatorsets/latest`)
-}
-
-export interface LcdVotingPower {
-  totalVotingPower: string
-  votingPowerByPubKey: {
-    [pubKey: string]: string
-  }
-}
-
-type VotingPowerByPubKey = { [pubKey: string]: string }
-
-export async function getVotingPower(): Promise<LcdVotingPower> {
-  const latestValidatorSet = await getLatestValidatorSet()
-  let totalVotingPower = '0'
-
-  const reducer = (acc: VotingPowerByPubKey, { pub_key, voting_power }: LcdLatestValidator): VotingPowerByPubKey => {
-    totalVotingPower = plus(totalVotingPower, voting_power)
-    return { ...acc, [pub_key]: voting_power }
-  }
-
-  const votingPowerByPubKey = Array.isArray(latestValidatorSet.validators)
-    ? latestValidatorSet.validators.reduce(reducer, {})
-    : {}
-
-  return { totalVotingPower, votingPowerByPubKey }
-}
-
-export async function getValidatorVotingPower(consensusPubkey: string): Promise<LcdLatestValidator | undefined> {
-  const latestValidatorSet = await getLatestValidatorSet()
-  const { validators } = latestValidatorSet
-  const filteredByAddr = filter(validators, { pub_key: consensusPubkey })
-  return filteredByAddr.length > 0 ? filteredByAddr[0] : undefined
+export async function getValidatorSets(height?: number): Promise<LcdValidatorSet[]> {
+  const result = await get(`/validatorsets/${height || 'latest'}`)
+  return result.validators || []
 }
 
 export function getBlock(height: number): Promise<LcdBlock> {
